@@ -11,43 +11,89 @@ import threading
 from ultralytics import YOLO
 
 
-# Socket oluştur
-client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client_socket.connect(('localhost', 8000))
+class SesliAsistan():
+    def __init__(self):
+        pass
 
-data = b""
-payload_size = struct.calcsize("Q")
+    def seslendirme(self, metin):
+        xtts = gTTS(text=metin, lang="tr")
+        dosya = "dosya" + str(random.randint(0, 123)) + ".mp3"
+        xtts.save(dosya)
+        playsound(dosya)
+        os.remove(dosya)
 
-while True:
-    while len(data) < payload_size:
-        packet = client_socket.recv(4*1024)
-        if not packet: break
-        data += packet
 
-    packed_msg_size = data[:payload_size]
-    data = data[payload_size:]
-    msg_size = struct.unpack("Q", packed_msg_size)[0]
+class FiratFrame():
+    def __init__(self):
+        self.asistan = SesliAsistan()
+        self.detected = False
+        self.model = YOLO("yolov8n.pt")
+        self.class_names = self.model.names
 
-    while len(data) < msg_size:
-        packet = client_socket.recv(4*1024)
-        if not packet: break
-        data += packet
+    def baslat(self):
+        threading.Thread(target=self.modelkamera).start()
 
-    frame_data = data[:msg_size]
-    data = data[msg_size:]
+    def modelkamera(self):
+        # Socket oluştur
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect(('localhost', 8000))
 
-    frame = pickle.loads(frame_data)
+        data = b""
+        payload_size = struct.calcsize("Q")
 
-    # Renk dönüşümü yerine direkt olarak GRAY formatında alalım
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    model=YOLO("yolov8n.pt")
-    frame = pickle.loads(frame_data)
+        while True:
+            while len(data) < payload_size:
+                packet = client_socket.recv(4 * 1024)
+                if not packet:
+                    break
+                data += packet
 
-    # İmajı göstermek için renk formatını yeniden ayarlayabiliriz
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # Veya BGR2GRAY olarak kalabilir, bağlı olarak
-    cv2.imshow('Face Tracking', frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+            packed_msg_size = data[:payload_size]
+            data = data[payload_size:]
+            msg_size = struct.unpack("Q", packed_msg_size)[0]
 
-client_socket.close()
-cv2.destroyAllWindows()
+            while len(data) < msg_size:
+                packet = client_socket.recv(4 * 1024)
+                if not packet:
+                    break
+                data += packet
+
+            frame_data = data[:msg_size]
+            data = data[msg_size:]
+
+            frame = pickle.loads(frame_data)
+            person_detected = False
+
+            # YOLO modelini kullanarak tahmin yap
+            results = self.model.predict(frame)
+
+            for result in results:
+                boxes = result.boxes.xyxy
+                scores = result.boxes.conf
+                classes = result.boxes.cls
+
+                for box, score, cls in zip(boxes, scores, classes):
+                    label = self.class_names[int(cls)]
+                    x1, y1, x2, y2 = map(int, box)
+
+                    if label == "person" and score >= 0.5:
+                        person_detected = True
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        cv2.putText(frame, f'{label} {score:.2f}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9,
+                                    (0, 255, 0), 2)
+
+            if person_detected and not self.detected:
+                self.detected = True
+                threading.Thread(target=self.asistan.seslendirme, args=("Kişi tespit edildi.",)).start()
+
+            cv2.imshow('FIRAT', frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        client_socket.close()
+        cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    kamera_cercevele = FiratFrame()
+    kamera_cercevele.baslat()
