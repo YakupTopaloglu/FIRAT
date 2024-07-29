@@ -57,9 +57,9 @@ def start_server(vehicle):
             # Start the voice assistant
             sesli_asistan = SesliAsistan()
             
-            end_time = time.time() + 5  #  saniye boyunca döngü
+            end_time = time.time() + 5  # 5 saniye boyunca döngü
             while time.time() < end_time:
-                sesli_asistan.seslendirme("Yeni bir konuma gitmekteyiz.")
+                sesli_asistan.seslendirme("Buradan uzaklas")
                 time.sleep(5)  # 5 saniye arayla sesli mesajlar gönder
                 
         client_socket.close()
